@@ -111,6 +111,11 @@ class ExecutionSettings(BaseSettings):
     retry_backoff_max_ms: int = Field(default=15_000, alias="EXEC_RETRY_BACKOFF_MAX_MS")
     risk_max_usd: float = Field(default=25.0, alias="EXEC_RISK_MAX_USD")
     dry_run: bool = Field(default=True, alias="EXEC_DRY_RUN")
+    # Planner gas / opportunity inputs
+    eth_price_usd: float = Field(default=3_000.0, alias="PLANNER_ETH_PRICE_USD")
+    default_gas_gwei: float = Field(default=30.0, alias="PLANNER_DEFAULT_GAS_GWEI")
+    opportunity_threshold: float = Field(default=0.3, alias="PLANNER_OPPORTUNITY_THRESHOLD")
+    risk_threshold: float = Field(default=0.75, alias="PLANNER_RISK_THRESHOLD")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

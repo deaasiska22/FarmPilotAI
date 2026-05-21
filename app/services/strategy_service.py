@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.agents.gas import GasEstimator
+from app.agents.opportunity import OpportunityScorer
 from app.agents.planner import PlannerAgent
 from app.ai.strategy import StrategySynthesiser
 from app.container import Container
@@ -8,18 +10,32 @@ from app.db.repositories.strategy_repo import StrategyRepository
 from app.db.repositories.task_repo import TaskRepository
 from app.db.repositories.wallet_repo import WalletRepository
 from app.models.orm import Strategy, Task, TaskStatus
-from app.models.schemas import StrategyRead
+from app.models.schemas import StrategyEvaluation, StrategyRead
 
 
 class StrategyService:
+    """Glues the API layer to the :class:`PlannerAgent`."""
+
     def __init__(self, container: Container) -> None:
         self.container = container
+        # PlannerAgent is intentionally constructed by wiring its
+        # collaborators here – we want each call to use the same EVM
+        # registry / reasoner instance as the rest of the process.
+        exec_settings = container.settings.execution
         self.planner = PlannerAgent(
             synthesiser=StrategySynthesiser(container.ai_reasoner),
-            settings=container.settings.execution,
+            gas_estimator=GasEstimator(
+                settings=exec_settings,
+                evm_registry=container.task_engine.evm_registry,
+            ),
+            opportunity_scorer=OpportunityScorer(exec_settings),
+            settings=exec_settings,
         )
 
-    async def design_for(self, *, project_slug: str, wallet_label: str | None) -> StrategyRead:
+    # ------------------------------------------------------------------
+    async def design_for(
+        self, *, project_slug: str, wallet_label: str | None
+    ) -> tuple[StrategyRead, StrategyEvaluation]:
         async with self.container.db.session() as session:
             projects = ProjectRepository(session)
             wallets = WalletRepository(session)
@@ -45,12 +61,16 @@ class StrategyService:
             }
             wallet_addr = wallet.address if wallet else "0x" + "0" * 40
 
-            strategy_create, plan_items = await self.planner.run(
+            strategy_create, plan_items, evaluation = await self.planner.run(
                 project=project_dict,
                 wallet_address=wallet_addr,
                 wallet_liquidity=liquidity,
             )
-            strategy_orm = Strategy(**strategy_create.model_dump())
+
+            payload = strategy_create.model_dump()
+            # ORM stores verdict as an Enum, schema uses the literal string.
+            payload["verdict"] = PlannerAgent.verdict_orm(evaluation.verdict)
+            strategy_orm = Strategy(**payload)
             await strategies.add(strategy_orm)
 
             for item in plan_items:
@@ -58,6 +78,9 @@ class StrategyService:
                     **item.params,
                     "chain": project.chain,
                     "risk_score": item.risk_score,
+                    "gas_units": item.gas_units,
+                    "gas_estimate_usd": item.gas_estimate_usd,
+                    "expected_reward_usd": item.expected_reward_usd,
                 }
                 tasks.session.add(
                     Task(
@@ -71,7 +94,7 @@ class StrategyService:
                     )
                 )
             await session.flush()
-        return StrategyRead.model_validate(strategy_orm)
+        return StrategyRead.model_validate(strategy_orm), evaluation
 
     async def list_for_project(self, project_id: int) -> list[StrategyRead]:
         async with self.container.db.session() as session:

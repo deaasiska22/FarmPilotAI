@@ -4,7 +4,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.api.deps import ExecutionServiceDep, StrategyServiceDep
-from app.models.schemas import ReportRead, StrategyRead
+from app.models.schemas import (
+    PlanItem,
+    ReportRead,
+    StrategyEvaluation,
+    StrategyRead,
+)
 
 router = APIRouter()
 
@@ -14,16 +19,26 @@ class DesignRequest(BaseModel):
     wallet_label: str | None = None
 
 
-@router.post("/design", response_model=StrategyRead)
+class DesignResponse(BaseModel):
+    strategy: StrategyRead
+    evaluation: StrategyEvaluation
+    items: list[PlanItem]
+
+
+@router.post("/design", response_model=DesignResponse)
 async def design_strategy(
     payload: DesignRequest, svc: StrategyServiceDep
-) -> StrategyRead:
+) -> DesignResponse:
     try:
-        return await svc.design_for(
+        strategy, evaluation = await svc.design_for(
             project_slug=payload.project_slug, wallet_label=payload.wallet_label
         )
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    items = [
+        PlanItem.model_validate(it) for it in strategy.plan_json.get("items", [])
+    ]
+    return DesignResponse(strategy=strategy, evaluation=evaluation, items=items)
 
 
 @router.post("/{strategy_id}/run", response_model=ReportRead)

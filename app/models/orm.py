@@ -57,6 +57,12 @@ class StrategyStatus(str, enum.Enum):
     ABORTED = "aborted"
 
 
+class StrategyVerdict(str, enum.Enum):
+    PROCEED = "proceed"
+    SKIP = "skip"
+    NEEDS_REVIEW = "needs_review"
+
+
 class ProjectRiskTier(str, enum.Enum):
     LOW = "low"
     MEDIUM = "medium"
@@ -115,6 +121,16 @@ class Strategy(Base, TimestampMixin):
     )
     rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
     plan_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    # --- Planner evaluation ---
+    opportunity_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    risk_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    estimated_gas_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    expected_reward_usd: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    verdict: Mapped[StrategyVerdict] = mapped_column(
+        Enum(StrategyVerdict, name="strategy_verdict"),
+        default=StrategyVerdict.NEEDS_REVIEW,
+        nullable=False,
+    )
 
     project: Mapped[Project] = relationship(back_populates="strategies")
     tasks: Mapped[list[Task]] = relationship(back_populates="strategy")

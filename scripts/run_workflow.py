@@ -100,10 +100,19 @@ async def main() -> None:
 
     # 3. Plan
     strategies = StrategyService(container)
-    strategy = await strategies.design_for(
+    strategy, evaluation = await strategies.design_for(
         project_slug=project.slug, wallet_label=wallet.label
     )
-    log.info("plan.ready", strategy_id=strategy.id, name=strategy.name)
+    log.info(
+        "plan.ready",
+        strategy_id=strategy.id,
+        name=strategy.name,
+        verdict=evaluation.verdict,
+        opportunity=evaluation.opportunity_score,
+        risk=evaluation.risk_score,
+        gas_usd=evaluation.estimated_gas_usd,
+        net_usd=evaluation.expected_net_usd,
+    )
 
     # 4. Execute
     execution = ExecutionService(container)
@@ -122,6 +131,13 @@ async def main() -> None:
 
     print("\n===== FarmPilot example summary =====")
     print(f"strategy : {strategy.name} (id={strategy.id})")
+    print(
+        f"plan     : verdict={evaluation.verdict} "
+        f"opportunity={evaluation.opportunity_score:.2f} "
+        f"risk={evaluation.risk_score:.2f} "
+        f"gas=${evaluation.estimated_gas_usd:.4f} "
+        f"net=${evaluation.expected_net_usd:.4f}"
+    )
     print(f"tasks    : {report.tasks_succeeded}/{report.tasks_total} ok")
     print(f"report   : {md_path}")
 
