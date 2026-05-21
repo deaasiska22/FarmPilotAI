@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "farmpilot-ai"
+version = "0.1.0"
+description = "Production-style autonomous Web3 farming agent"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "FarmPilotAI" }]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+addopts = "-ra -q"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["data", "logs", "profiles"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "S", "C4", "SIM"]
+# S101 assert in tests; S105/S106 secret-strings in tests/examples; S311 random use is fine
+# B008 Depends(...) in defaults is canonical FastAPI; ASYNC109 false-positives on
+# Playwright-style ms `timeout` args; S104 is intentional for dev server binding;
+# S110/S112 are intentional fallthrough in the self-healing selector engine.
+ignore = ["S101", "S105", "S106", "S311", "B008", "ASYNC109", "S104", "S110", "S112"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+strict = false
+ignore_missing_imports = true
