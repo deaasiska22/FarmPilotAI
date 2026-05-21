@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -77,6 +77,29 @@ class PlanItem(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
     rationale: str | None = None
     risk_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    # --- enrichment populated by GasEstimator + OpportunityScorer ---
+    gas_units: int = Field(default=0, ge=0)
+    gas_estimate_usd: float = Field(default=0.0, ge=0.0)
+    expected_reward_usd: float = Field(default=0.0, ge=0.0)
+
+    @property
+    def net_expected_usd(self) -> float:
+        return self.expected_reward_usd - self.gas_estimate_usd
+
+
+StrategyVerdict = Literal["proceed", "skip", "needs_review"]
+
+
+class StrategyEvaluation(BaseModel):
+    """Planner-level verdict on whether a strategy is worth executing."""
+
+    opportunity_score: float = Field(ge=0.0, le=1.0)
+    risk_score: float = Field(ge=0.0, le=1.0)
+    estimated_gas_usd: float = Field(ge=0.0)
+    expected_reward_usd: float = Field(ge=0.0)
+    expected_net_usd: float
+    verdict: StrategyVerdict
+    reason: str
 
 
 class StrategyBase(BaseModel):
@@ -86,6 +109,18 @@ class StrategyBase(BaseModel):
     status: StrategyStatus = StrategyStatus.DRAFT
     rationale: str | None = None
     plan_json: dict[str, Any] = Field(default_factory=dict)
+    # populated by the PlannerAgent
+    opportunity_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    risk_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    estimated_gas_usd: float = Field(default=0.0, ge=0.0)
+    expected_reward_usd: float = Field(default=0.0, ge=0.0)
+    verdict: StrategyVerdict = "needs_review"
+
+    @field_validator("verdict", mode="before")
+    @classmethod
+    def _flatten_verdict(cls, v: Any) -> Any:
+        # accept either the ORM enum or the literal string
+        return v.value if hasattr(v, "value") else v
 
 
 class StrategyCreate(StrategyBase):

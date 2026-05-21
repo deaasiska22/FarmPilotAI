@@ -254,6 +254,38 @@ OpenAPI is auto-generated at `/docs`. Key endpoints:
    - Stash the profile under `./profiles/<wallet-label>/` so subsequent runs
      skip onboarding.
 
+## Planner pipeline
+
+`PlannerAgent` is a thin coordinator that composes three collaborators:
+
+| Stage | Module | Output |
+|---|---|---|
+| Draft | `app/ai/strategy.py · StrategySynthesiser` | List of `PlanItem`s from the reasoner (heuristic / OpenAI / Anthropic) |
+| Gas estimate | `app/agents/gas.py · GasEstimator` | Per-item `gas_units`, `gas_price_gwei`, `gas_estimate_usd` |
+| Score & verdict | `app/agents/opportunity.py · OpportunityScorer` | Per-item `expected_reward_usd` + calibrated `risk_score`, plus a strategy-level `StrategyEvaluation` (`opportunity_score`, `risk_score`, `estimated_gas_usd`, `expected_reward_usd`, `expected_net_usd`, `verdict ∈ {proceed, skip, needs_review}`, `reason`) |
+
+The agent then persists everything as typed columns on `Strategy` plus a
+structured `plan_json` blob, so the API can return both the high-level
+verdict and the executable task list in one shot:
+
+```json
+POST /api/v1/strategies/design  →  {
+  "strategy":   { "opportunity_score": 0.21, "risk_score": 0.23, "verdict": "needs_review", ... },
+  "evaluation": { "expected_net_usd": 5.85, "reason": "opportunity 0.21 below threshold 0.30", ... },
+  "items":      [{ "kind": "faucet", "gas_units": 0, "expected_reward_usd": 1.5, "risk_score": 0.15 }, ...]
+}
+```
+
+Knobs that govern verdict gating (all under `ExecutionSettings`):
+
+| Setting | Default | Effect |
+|---|---|---|
+| `EXEC_RISK_MAX_USD` | 25.0 | Hard ceiling – plans whose gas estimate exceeds this are skipped |
+| `PLANNER_RISK_THRESHOLD` | 0.75 | Strategy risk ≥ threshold → skip |
+| `PLANNER_OPPORTUNITY_THRESHOLD` | 0.30 | Opportunity below threshold → `needs_review` |
+| `PLANNER_ETH_PRICE_USD` | 3000 | Used to convert gas to USD |
+| `PLANNER_DEFAULT_GAS_GWEI` | 30 | Fallback when chain RPC is unreachable |
+
 ## Anti-sybil & safety posture
 
 - **Human delays**: every click / key event flows through `Humanizer` —
